@@ -4,7 +4,8 @@ import sys
 import evernote
 from evernote.api.client import EvernoteClient
 import evernote.edam.notestore.NoteStore as NoteStore
-from BeautifulSoup import BeautifulSoup
+from BeautifulSoup import NavigableString
+from BeautifulSoup import BeautifulSoup as BS
 
 class Renamer:
 
@@ -43,45 +44,42 @@ class Renamer:
         return notestore.listNotebooks()[index]
 
 
-    def get_noteslist(self, notestore, notebook, offset, limit):
+    def get_notemeta_list(self, notestore, notebook, offset, limit):
         filter = evernote.edam.notestore.ttypes.NoteFilter()
         filter.notebookGuid = notebook.guid
-
         spec = NoteStore.NotesMetadataResultSpec()
-        #spec.includeNotebookGuid = True
-        #spec.includeCreated = True
 
         meta = notestore.findNotesMetadata(self.token, filter, offset, limit, spec)
         return meta.notes
 
-    #def replace_titles(self, notes, notestore):
-    #    for note in notes:
-    #        noteguid = note.guid
-    #
-    #        note = notestore.getNote(token, noteguid, True, False, False, False)
-    #        notecontent = note.content
-    #
-    #        notesoup = BeautifulSoup(notecontent)
-    #        firstdiv = notesoup.findAll('div')[0]
-    #        newtitle = firstdiv.contents[0]
-    #
-    #        note.title = newtitle
-    #        note = notestore.updateNote(note)
-
     def get_note(self, note, notestore):
             return notestore.getNote(self.token, note.guid, True, False, False, False)
-
-    def get_note_firstline(self, note):
-            notesoup = BeautifulSoup(note.content)
-            first = notesoup.findAll('en-note')[0]
-            #line = notesoup.findAll('div')[0]
-            line = first.contents[0]
-            return line
 
     def get_note_title(self, note):
         return note.title
 
-    def parse_query_string(self, authorize_url):
+    def get_title_length(self, note):
+        return len(note.title)
+
+    def get_note_firstline(self, note):
+        notesoup = BS(note.content)
+        first = notesoup.findAll('en-note')[0]
+        line = first.contents[0].text
+        return line
+
+    def update_title(self, note, notestore, new_title):
+        note.title = new_title
+        note = notestore.updateNote(note)
+        return note
+
+    def append_body(self, note, notestore, text):
+        notesoup = BS(note.content)
+        notesoup.findAll('en-note')[0].contents[-1].append(NavigableString(text))
+        note.content = str(notesoup)
+        note = notestore.updateNote(note)
+
+    @staticmethod
+    def parse_query_string(authorize_url):
         uargs = authorize_url.split('?')
         vals = {}
         if len(uargs) == 1:
@@ -91,23 +89,28 @@ class Renamer:
             vals[key] = value
         return vals
 
+    @staticmethod
+    def get_keys(filepath):
+        f = open(filepath, 'r')
+        keys= {}
+        for line in f:
+            print line
+            k, v = line.strip().split('^')
+            keys[k.strip()] = v.strip()
+        f.close()
+        return keys
+    
+
 if __name__ == '__main__':
 
+    keys_filepath = "keys.txt"
     is_sandbox = True
     notebook_index = 0
     offset = 0
     limit = 10
 
-    keys_filepath = "keys.txt"
+    keys = Renamer.get_keys(keys_filepath)
 
-    f = open(keys_filepath, 'r')
-    keys= {}
-    for line in f:
-        print line
-        k, v = line.strip().split('^')
-        keys[k.strip()] = v.strip()
-    f.close()
-    
     if sys.argv[1] == "p":
         keys["token"] = keys["prod_token"]
         keys["url"] = keys["prod_url"]
@@ -123,19 +126,21 @@ if __name__ == '__main__':
     client = rn.get_client_dev()
     notestore = rn.get_notestore(client)
     notebook = rn.get_notebook(notestore, notebook_index)
-    noteslist = rn.get_noteslist(notestore, notebook, offset, limit)
-    for note in noteslist:
-        retrieved_note = rn.get_note(note, notestore)
-        firstline = rn.get_note_firstline(retrieved_note)
-        print firstline
+    noteslist = rn.get_notemeta_list(notestore, notebook, offset, limit)
 
-
-
-
-
-
-
-
-
-
+    n0 = rn.get_note(noteslist[0], notestore)
+    n0s = BS(n0.content)
+    n0f = n0s.findAll('en-note')[0]
+    n1 = rn.get_note(noteslist[1], notestore)
+    n1s = BS(n1.content)
+    n1f = n1s.findAll('en-note')[0]
+    n2 = rn.get_note(noteslist[2], notestore)
+    n2s = BS(n0.content)
+    n2f = n2s.findAll('en-note')[0]
+    retrieved_notes = [n0, n1, n2]
+    
+    
+    
+    
+        
 
