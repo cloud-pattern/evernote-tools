@@ -1,101 +1,141 @@
-#Changes the titles of every note in a given note book
-#   to the content of the first div in the note content.
-import evernote as evernote
+#renamer.py | Robert Florance | 09.01.15
+
+import sys
+import evernote
 from evernote.api.client import EvernoteClient
 import evernote.edam.notestore.NoteStore as NoteStore
 from BeautifulSoup import BeautifulSoup
 
+class Renamer:
 
-keys_filepath = "keys.txt"
+    def __init__(self, customer_key, customer_secret, token, url, is_sandbox):
+        self.customer_key = customer_key
+        self.customer_secret = customer_secret
+        self.token = token
+        self.url = url
+        self.is_sandbox = is_sandbox
 
-f = open(keys_filepath, 'r')
-keys= {}
-for line in f:
-    print line
-    k, v = line.strip().split('^')
-    keys[k.strip()] = v.strip()
-f.close()
+    def get_client_oauth(self):
+        client = EvernoteClient(consumer_key = self.customer_key, 
+                                consumer_secret = self.customer_secret,
+                                sandbox = self.is_sandbox)
+        request_token = client.get_request_token(self.url)
 
-token = keys["token"]
-#token = keys["sandbox_token"]
+        print client.get_authorize_url(request_token)
+        auth_url = raw_input()
+        vals = parse_query_string(auth_url)
 
-def get_client_oauth():
-    client = EvernoteClient(consumer_key=keys["ckey"], 
-                            consumer_secret=keys["csecret"],
-                            sandbox=False)
-    request_token = client.get_request_token(keys["prod_notestore_url"])
-    print client.get_authorize_url(request_token)
+        auth_token = client.get_access_token(
+            request_token['oauth_token'],
+            request_token['oauth_token_secret'],
+            vals['oauth_verifier']
+        )
+        return client
 
-    #now the user should paste that into the browser,
-    #   ...accept the access, then paste the resulting url back in
-    #   ...and hit enter
-    auth_url = raw_input()
-    vals = parse_query_string(auth_url)
-    auth_token = client.get_access_token(
-        request_token['oauth_token'],
-        request_token['oauth_token_secret'],
-        vals['oauth_verifier']
-    )
-    print "auth token:\n"
-    print auth_token
+    def get_client_dev(self):
+        client = EvernoteClient(token = self.token, sandbox = self.is_sandbox)
+        return client
 
-    return client
+    def get_notestore(self, client):
+        return client.get_note_store()
 
-def get_client_dev():
-    client = EvernoteClient(token=token, sandbox=False)
-    return client
+    def get_notebook(self, notestore, index):
+        return notestore.listNotebooks()[index]
 
-def get_note_list(notestore,notebook, offset, limit):
-    filter = evernote.edam.notestore.ttypes.NoteFilter()
-    filter.notebookGuid = notebook.guid
 
-    spec = NoteStore.NotesMetadataResultSpec()
-    spec.includeNotebookGuid = True
-    spec.includeCreated = True
+    def get_noteslist(self, notestore, notebook, offset, limit):
+        filter = evernote.edam.notestore.ttypes.NoteFilter()
+        filter.notebookGuid = notebook.guid
 
-    meta = notestore.findNotesMetadata(token, filter, offset, limit, spec)
-    return meta.notes
+        spec = NoteStore.NotesMetadataResultSpec()
+        #spec.includeNotebookGuid = True
+        #spec.includeCreated = True
 
-def replace_titles(notes, notestore):
-    for note in notes:
-        noteguid = note.guid
+        meta = notestore.findNotesMetadata(self.token, filter, offset, limit, spec)
+        return meta.notes
 
-        note = notestore.getNote(token, noteguid, True, False, False, False)
-        notecontent = note.content
+    #def replace_titles(self, notes, notestore):
+    #    for note in notes:
+    #        noteguid = note.guid
+    #
+    #        note = notestore.getNote(token, noteguid, True, False, False, False)
+    #        notecontent = note.content
+    #
+    #        notesoup = BeautifulSoup(notecontent)
+    #        firstdiv = notesoup.findAll('div')[0]
+    #        newtitle = firstdiv.contents[0]
+    #
+    #        note.title = newtitle
+    #        note = notestore.updateNote(note)
 
-        notesoup = BeautifulSoup(notecontent)
-        firstdiv = notesoup.findAll('div')[0]
-        newtitle = firstdiv.contents[0]
+    def get_note(self, note, notestore):
+            return notestore.getNote(self.token, note.guid, True, False, False, False)
 
-        note.title = newtitle
-        note = notestore.updateNote(note)
+    def get_note_firstline(self, note):
+            notesoup = BeautifulSoup(note.content)
+            first = notesoup.findAll('en-note')[0]
+            #line = notesoup.findAll('div')[0]
+            line = first.contents[0]
+            return line
 
-def list_titles(notes, notestore):
-    for note in notes:
-        noteguid = note.guid
+    def get_note_title(self, note):
+        return note.title
 
-        note = notestore.getNote(token, noteguid, True, False, False, False)
-        notecontent = note.content
+    def parse_query_string(self, authorize_url):
+        uargs = authorize_url.split('?')
+        vals = {}
+        if len(uargs) == 1:
+            raise Exception('Invalid Authorization URL')
+        for pair in uargs[1].split('&'):
+            key, value = pair.split('=', 1)
+            vals[key] = value
+        return vals
 
-        notesoup = BeautifulSoup(notecontent)
-        firstdiv = notesoup.findAll('div')[0]
-        print firstdiv.contents[0]
+if __name__ == '__main__':
 
-def check_title(note):
-    if len(note.title) == 33:
-        print title
+    is_sandbox = True
+    notebook_index = 0
+    offset = 0
+    limit = 10
 
-def parse_query_string(authorize_url):
-    uargs = authorize_url.split('?')
-    vals = {}
-    if len(uargs) == 1:
-        raise Exception('Invalid Authorization URL')
-    for pair in uargs[1].split('&'):
-        key, value = pair.split('=', 1)
-        vals[key] = value
-    return vals
+    keys_filepath = "keys.txt"
 
-client = get_client_dev()
-ns = client.get_note_store()
-nb = ns.listNotebooks()[11]
-notes = get_note_list(ns, nb)
+    f = open(keys_filepath, 'r')
+    keys= {}
+    for line in f:
+        print line
+        k, v = line.strip().split('^')
+        keys[k.strip()] = v.strip()
+    f.close()
+    
+    if sys.argv[1] == "p":
+        keys["token"] = keys["prod_token"]
+        keys["url"] = keys["prod_url"]
+        is_sandbox = False
+        print "running on production"
+        
+    rn = Renamer(keys["customer_key"],
+                 keys["customer_secret"],
+                 keys["token"],
+                 keys["url"],
+                 is_sandbox)
+
+    client = rn.get_client_dev()
+    notestore = rn.get_notestore(client)
+    notebook = rn.get_notebook(notestore, notebook_index)
+    noteslist = rn.get_noteslist(notestore, notebook, offset, limit)
+    for note in noteslist:
+        retrieved_note = rn.get_note(note, notestore)
+        firstline = rn.get_note_firstline(retrieved_note)
+        print firstline
+
+
+
+
+
+
+
+
+
+
+
