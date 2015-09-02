@@ -45,7 +45,7 @@ def get_client_dev():
     client = EvernoteClient(token=token, sandbox=False)
     return client
 
-def get_note_list(notestore,notebook):
+def get_note_list(notestore,notebook, offset, limit):
     filter = evernote.edam.notestore.ttypes.NoteFilter()
     filter.notebookGuid = notebook.guid
 
@@ -53,7 +53,7 @@ def get_note_list(notestore,notebook):
     spec.includeNotebookGuid = True
     spec.includeCreated = True
 
-    meta = notestore.findNotesMetadata(token, filter, 0, 100, spec)
+    meta = notestore.findNotesMetadata(token, filter, offset, limit, spec)
     return meta.notes
 
 def replace_titles(notes, notestore):
@@ -70,6 +70,17 @@ def replace_titles(notes, notestore):
         note.title = newtitle
         note = notestore.updateNote(note)
 
+def list_titles(notes, notestore):
+    for note in notes:
+        noteguid = note.guid
+
+        note = notestore.getNote(token, noteguid, True, False, False, False)
+        notecontent = note.content
+
+        notesoup = BeautifulSoup(notecontent)
+        firstdiv = notesoup.findAll('div')[0]
+        print firstdiv.contents[0]
+
 def check_title(note):
     if len(note.title) == 33:
         print title
@@ -84,6 +95,7 @@ def parse_query_string(authorize_url):
         vals[key] = value
     return vals
 
-def test():
-    print 'testing'
-
+client = get_client_dev()
+ns = client.get_note_store()
+nb = ns.listNotebooks()[11]
+notes = get_note_list(ns, nb)
